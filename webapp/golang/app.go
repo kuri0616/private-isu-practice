@@ -205,19 +205,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 
 		p.Comments = comments
 
-		err = db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
-		if err != nil {
-			return nil, err
-		}
-
 		p.CSRFToken = csrfToken
-
-		if p.User.DelFlg == 0 {
-			posts = append(posts, p)
-		}
-		if len(posts) >= postsPerPage {
-			break
-		}
 	}
 
 	return posts, nil
@@ -386,8 +374,23 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 	me := getSessionUser(r)
 
 	results := []Post{}
-
-	err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC")
+	err := db.Select(&results, `
+    SELECT 
+        posts.id, 
+        posts.user_id, 
+        posts.body, 
+        posts.mime, 
+        posts.created_at, 
+        users.username 
+    FROM 
+        posts 
+    JOIN 
+        users 
+    ON 
+        posts.user_id = users.id 
+    ORDER BY 
+        posts.created_at DESC 
+    LIMIT 20`)
 	if err != nil {
 		log.Print(err)
 		return
@@ -432,8 +435,24 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-
-	err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC", user.ID)
+	err = db.Select(&results, `
+    SELECT 
+        posts.id, 
+        posts.user_id, 
+        posts.body, 
+        posts.mime, 
+        posts.created_at, 
+        users.username 
+    FROM 
+        posts 
+    JOIN 
+        users 
+    ON 
+        posts.user_id = users.id 
+    WHERE 
+        posts.user_id = ? 
+    ORDER BY 
+        posts.created_at DESC`, user.ID)
 	if err != nil {
 		log.Print(err)
 		return
@@ -521,7 +540,24 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= ? ORDER BY `created_at` DESC", t.Format(ISO8601Format))
+	err = db.Select(&results, `
+    SELECT 
+        posts.id, 
+        posts.user_id, 
+        posts.body, 
+        posts.mime, 
+        posts.created_at, 
+        users.username 
+    FROM 
+        posts 
+    JOIN 
+        users 
+    ON 
+        posts.user_id = users.id 
+    WHERE 
+        posts.created_at <= ? 
+    ORDER BY 
+        posts.created_at DESC`, t.Format(ISO8601Format))
 	if err != nil {
 		log.Print(err)
 		return
@@ -557,7 +593,22 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	err = db.Select(&results, "SELECT * FROM `posts` WHERE `id` = ?", pid)
+	err = db.Select(&results, `
+    SELECT 
+        posts.id, 
+        posts.user_id, 
+        posts.body, 
+        posts.mime, 
+        posts.created_at, 
+        users.username 
+    FROM 
+        posts 
+    JOIN 
+        users 
+    ON 
+        posts.user_id = users.id 
+    WHERE 
+        posts.id = ?`, pid)
 	if err != nil {
 		log.Print(err)
 		return
