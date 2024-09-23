@@ -175,43 +175,73 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
+	postIDs := []int{}
 	for _, p := range results {
-		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
-		if err != nil {
+		postIDs = append(postIDs, p.ID)
+	}
+
+	// postIDごとのコメント数を格納変数を定義
+	commentCounts := map[int]int{}
+
+	rows, err := db.Query("SELECT post_id, COUNT(*) AS count FROM comments WHERE post_id IN (?) GROUP BY post_id", postIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var postID, count int
+		if err := rows.Scan(&postID, &count); err != nil {
 			return nil, err
 		}
+		commentCounts[postID] = count
+	}
 
-		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
-		if !allComments {
-			query += " LIMIT 3"
-		}
-		var comments []Comment
-		err = db.Select(&comments, query, p.ID)
-		if err != nil {
+	commentMap := map[int][]Comment{}
+	query := "SELECT * FROM comments WHERE post_id IN (?) ORDER BY created_at DESC"
+	if !allComments {
+		query += " LIMIT 3"
+	}
+	rows, err = db.Query(query, postIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var comment Comment
+		if err := rows.Scan(&comment.ID, &comment.PostID, &comment.UserID, &comment.Comment, &comment.CreatedAt); err != nil {
 			return nil, err
 		}
+		commentMap[comment.PostID] = append(commentMap[comment.PostID], comment)
+	}
 
-		for i := 0; i < len(comments); i++ {
-			err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-			if err != nil {
-				return nil, err
-			}
+	userIDs := []int{}
+	for _, comments := range commentMap {
+		for _, comment := range comments {
+			userIDs = append(userIDs, comment.UserID)
 		}
-
-		// reverse
-		for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
-			comments[i], comments[j] = comments[j], comments[i]
-		}
-
-		p.Comments = comments
-
-		err = db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
-		if err != nil {
+	}
+	userMap := map[int]User{}
+	rows, err = db.Query("SELECT * FROM users WHERE id IN (?)", userIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var user User
+		if err := rows.Scan(&user.ID, &user.AccountName, &user.DelFlg); err != nil {
 			return nil, err
 		}
+		userMap[user.ID] = user
+	}
 
+	for _, p := range results {
+		p.CommentCount = commentCounts[p.ID]
+		p.Comments = commentMap[p.ID]
+		for i := range p.Comments {
+			p.Comments[i].User = userMap[p.Comments[i].UserID]
+		}
+		p.User = userMap[p.UserID]
 		p.CSRFToken = csrfToken
-
 		if p.User.DelFlg == 0 {
 			posts = append(posts, p)
 		}
@@ -221,6 +251,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	}
 
 	return posts, nil
+
 }
 
 func imageURL(p Post) string {
