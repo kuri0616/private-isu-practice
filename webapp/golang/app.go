@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -849,6 +850,6 @@ func main() {
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		http.FileServer(http.Dir("../public")).ServeHTTP(w, r)
 	})
-
+	fmt.Println("現在のプロセス数:", runtime.GOMAXPROCS(0))
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
